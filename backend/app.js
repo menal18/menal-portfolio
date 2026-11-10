@@ -29,7 +29,34 @@ export default function createApp() {
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
-  const origins = (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean);
+ 
+const origins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://menal-portfolio.vercel.app',
+  ...(process.env.CLIENT_URL || '')
+    .split(',')
+    .map((s) => s.trim().replace(/\/+$/, '')),
+].filter(Boolean);
+
+console.log('Allowed CORS origins:', origins);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || origins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.error('Blocked CORS origin:', origin);
+      return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  })
+);
+
   // In development, localhost and 127.0.0.1 are interchangeable (a common gotcha when opening the site)
   if (process.env.NODE_ENV !== 'production') {
     for (const o of [...origins]) {
