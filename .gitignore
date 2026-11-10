@@ -1,11 +1,31 @@
+
+# Dependencies
 node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Build files
 dist/
 build/
+frontend/dist/
+
+# Environment files
 .env
 .env.*
 !.env.example
+frontend/.env
+backend/.env
+
+# Nested Git backup
+frontend/.git-backup/
+
+# Logs
 *.log
+
+# OS files
 .DS_Store
 Thumbs.db
+
+# VS Code
 .vscode/*
 !.vscode/extensions.json

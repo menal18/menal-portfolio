@@ -1,0 +1,55 @@
+import { useEffect, useState } from 'react';
+import { Download, Trash2, Upload } from 'lucide-react';
+import api, { errMsg, resumeUrl } from '../services/api.js';
+import { PageHeader, Spinner, fmtDate, useToast } from './ui.jsx';
+
+export default function ResumeAdmin() {
+  const toast = useToast();
+  const [meta, setMeta] = useState(null);
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => api.get('/admin/resume').then((r) => setMeta(r.data)).catch((e) => toast(errMsg(e), 'error'));
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const pick = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (f.type !== 'application/pdf') { toast('Choose a PDF file', 'error'); e.target.value = ''; return; }
+    if (f.size > 10 * 1024 * 1024) { toast('The PDF is over 10 MB', 'error'); e.target.value = ''; return; }
+    setFile(f);
+  };
+  const upload = async () => {
+    const fd = new FormData();
+    fd.append('resume', file);
+    setBusy(true);
+    try { await api.post('/admin/resume', fd); toast('Resume uploaded. The public download now serves this file.'); setFile(null); load(); } catch (e) { toast(errMsg(e), 'error'); } finally { setBusy(false); }
+  };
+  const remove = async () => {
+    if (!window.confirm('Remove the resume? The download button will disappear from the site.')) return;
+    try { await api.delete('/admin/resume'); toast('Resume removed'); load(); } catch (e) { toast(errMsg(e), 'error'); }
+  };
+
+  if (!meta) return <Spinner />;
+  return (
+    <>
+      <PageHeader title="Resume" sub="Uploading a new PDF replaces the old one. The public download always serves the latest." />
+      <section className="a-panel">
+        <h2>Current file</h2>
+        {meta.available ? (
+          <>
+            <p><strong>{meta.fileName}</strong> <span className="muted">{(meta.size / 1024).toFixed(0)} KB, uploaded {fmtDate(meta.updatedAt)}</span></p>
+            <div className="a-actions">
+              <a className="a-btn" href={resumeUrl} target="_blank" rel="noopener noreferrer"><Download size={16} /> Open public download</a>
+              <button type="button" className="a-btn danger" onClick={remove}><Trash2 size={16} /> Remove</button>
+            </div>
+          </>
+        ) : <p className="muted">No resume uploaded yet.</p>}
+      </section>
+      <section className="a-panel">
+        <h2>{meta.available ? 'Replace resume' : 'Upload resume'}</h2>
+        <div className="a-field"><label htmlFor="pdf">PDF file (max 10 MB)</label><input id="pdf" type="file" accept="application/pdf" onChange={pick} /></div>
+        <button type="button" className="a-btn primary" disabled={!file || busy} onClick={upload}><Upload size={16} /> {busy ? 'Uploading...' : 'Upload'}</button>
+      </section>
+    </>
+  );
+}
