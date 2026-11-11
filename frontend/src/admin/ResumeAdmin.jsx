@@ -22,7 +22,14 @@ export default function ResumeAdmin() {
     const fd = new FormData();
     fd.append('resume', file);
     setBusy(true);
-    try { await api.post('/admin/resume', fd); toast('Resume uploaded. The public download now serves this file.'); setFile(null); load(); } catch (e) { toast(errMsg(e), 'error'); } finally { setBusy(false); }
+    try {
+      const { data } = await api.post('/admin/resume', fd);
+      toast(data.cleanupWarning
+        ? `Resume uploaded, but the previous Cloudinary file could not be removed: ${data.cleanupWarning}`
+        : 'Resume uploaded. The public download now serves this file.');
+      setFile(null);
+      load();
+    } catch (e) { toast(errMsg(e), 'error'); } finally { setBusy(false); }
   };
   const remove = async () => {
     if (!window.confirm('Remove the resume? The download button will disappear from the site.')) return;

@@ -49,7 +49,7 @@ Nothing is pre-filled with results, statistics or achievements. Performance figu
 ## 4. Set up Cloudinary
 
 1. Sign in to Cloudinary and open the **Dashboard**. Note the **Cloud name**, **API Key** and **API Secret**.
-2. **Important for the resume PDF:** open *Settings > Security* and make sure **"PDF and ZIP files delivery"** is **enabled** (new accounts have it switched off, which makes the public resume download fail with an error). Save the change.
+2. **Important for the resume PDF:** open *Settings > Security* and make sure **"PDF and ZIP files delivery"** is **enabled** (new accounts have it switched off, which makes the public resume download fail with a 401/ACL error). Save the change. The backend uploads resumes through the signed API as `image/upload` with public access; it does not use an unsigned upload preset. If you add an upload preset in Cloudinary, make sure it does not force authenticated delivery or restricted access.
 
 ## 5. Configure and install the backend
 
@@ -197,7 +197,7 @@ Free Render instances sleep after inactivity, so the first request can take arou
 | Site shows "The site could not load" | Backend is not running, or `CLIENT_URL` does not match the site's address |
 | `Origin not allowed by CORS` | Add the exact site origin (with `https://`, without trailing slash) to `CLIENT_URL` |
 | Uploads say Cloudinary is not configured | Fill the three `CLOUDINARY_*` values and restart the backend |
-| Resume download shows a 401 or error page | Enable *PDF and ZIP files delivery* in Cloudinary (step 4.2) |
+| Resume upload/download shows a 401 or error page | Enable *PDF and ZIP files delivery* in Cloudinary (step 4.2) and ensure the asset is delivered publicly (not authenticated/restricted) |
 | Port already in use | Change `PORT` in `backend\.env` and `DEV_API_TARGET` for the frontend (`DEV_API_TARGET=http://localhost:5001` in `frontend\.env`) |
 | Forgot admin password | Set a new `ADMIN_PASSWORD` in `backend\.env` and run `npm run seed:admin` |
 

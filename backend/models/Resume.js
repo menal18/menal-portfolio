@@ -6,6 +6,7 @@ const resumeSchema = new mongoose.Schema(
     singleton: { type: String, default: 'main', unique: true },
     url: { type: String, required: true },
     publicId: { type: String, required: true },
+    resourceType: { type: String, enum: ['image', 'raw'] },
     fileName: { type: String, default: 'Menal-Resume.pdf' },
     size: Number,
   },
