@@ -8,9 +8,60 @@ function ensure() {
   configureCloudinary();
 }
 
+function logCloudinaryError(operation, error, context) {
+  console.error(`[Cloudinary] ${operation} failed`, {
+    ...context,
+    httpCode: error?.http_code,
+    message: error?.message || String(error),
+  });
+}
+
+async function getDeliveryErrorDetails(url) {
+  try {
+    const response = await fetch(url, {
+      headers: { Range: 'bytes=0-0' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10000),
+    });
+    const contentType = response.headers.get('content-type') || '';
+    if (response.ok || !contentType.toLowerCase().includes('application/json')) {
+      await response.body?.cancel();
+      return null;
+    }
+
+    const body = await response.text();
+    try {
+      const error = JSON.parse(body).error;
+      return {
+        code: error?.code,
+        message: error?.message,
+        requestId: error?.requestId,
+      };
+    } catch {
+      return { message: body.slice(0, 500) };
+    }
+  } catch (error) {
+    return { diagnosticFetchError: error?.message || String(error) };
+  }
+}
+
 export function uploadBuffer(buffer, { folder, resourceType = 'image', deliveryType = 'upload', publicId } = {}) {
   ensure();
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error, source) => {
+      if (settled) return;
+      settled = true;
+      logCloudinaryError('Upload', error, {
+        folder,
+        resourceType,
+        deliveryType,
+        publicId,
+        source,
+      });
+      reject(new AppError(`Cloudinary upload failed: ${error?.message || 'Unknown Cloudinary error'}`, 502));
+    };
+
     const stream = cloudinary.uploader.upload_stream(
       {
         folder: `menal-portfolio/${folder}`,
@@ -21,18 +72,31 @@ export function uploadBuffer(buffer, { folder, resourceType = 'image', deliveryT
         overwrite: true,
       },
       (err, result) => {
-        if (err) return reject(new AppError(`Cloudinary upload failed: ${err.message}`, 502));
+        if (err) return fail(err, 'upload callback');
         if (!result?.secure_url || !result.public_id) {
-          return reject(new AppError('Cloudinary upload did not return a public URL and asset ID', 502));
+          return fail(new Error('Cloudinary upload did not return a public URL and asset ID'), 'upload response');
         }
+        settled = true;
         resolve(result);
       }
     );
-    stream.end(buffer);
+    stream.on('error', (err) => fail(err, 'upload stream'));
+    try {
+      stream.end(buffer);
+    } catch (err) {
+      fail(err, 'upload stream');
+    }
   });
 }
 
 export async function verifyPublicDelivery(url, expectedContentType) {
+  let deliveryHost;
+  try {
+    deliveryHost = new URL(url).host;
+  } catch (err) {
+    throw new AppError(`Could not verify Cloudinary public delivery: ${err.message}`, 502);
+  }
+
   let response;
   try {
     response = await fetch(url, {
@@ -41,12 +105,28 @@ export async function verifyPublicDelivery(url, expectedContentType) {
       signal: AbortSignal.timeout(10000),
     });
   } catch (err) {
+    logCloudinaryError('Public delivery verification', err, {
+      host: deliveryHost,
+      expectedContentType,
+    });
     throw new AppError(`Could not verify Cloudinary public delivery: ${err.message}`, 502);
   }
   const contentType = response.headers.get('content-type') || '';
-  if (!response.ok || !contentType.toLowerCase().startsWith(expectedContentType.toLowerCase())) {
+  const mediaType = contentType.split(';', 1)[0].trim().toLowerCase();
+  const expectedMediaType = expectedContentType.split(';', 1)[0].trim().toLowerCase();
+  if (!response.ok || mediaType !== expectedMediaType) {
+    const cloudinaryError = !response.ok && mediaType === 'application/json'
+      ? await getDeliveryErrorDetails(url)
+      : null;
+    console.error('[Cloudinary] Public delivery verification failed', {
+      host: deliveryHost,
+      status: response.status,
+      contentType: contentType || '(missing)',
+      expectedContentType: expectedMediaType,
+      cloudinaryError,
+    });
     throw new AppError(
-      `Cloudinary uploaded the PDF, but public delivery failed (HTTP ${response.status}). Enable PDF and ZIP files delivery in Cloudinary Settings > Security and confirm public access.`,
+      `Cloudinary uploaded the file, but public delivery verification returned HTTP ${response.status} with Content-Type "${contentType || 'missing'}"${cloudinaryError?.message ? ` (${cloudinaryError.message})` : ''} (expected ${expectedMediaType}). Verify Cloudinary PDF delivery and account access controls; only allow public delivery if this resume is intended to be public.`,
       502
     );
   }

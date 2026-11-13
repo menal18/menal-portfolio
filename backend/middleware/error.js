@@ -25,5 +25,9 @@ export const errorHandler = (err, _req, res, _next) => {
   }
 
   if (status >= 500) console.error(err);
-  res.status(status).json({ message: status >= 500 && process.env.NODE_ENV === 'production' ? 'Server error' : message });
+  res.status(status).json({
+    message: status >= 500 && process.env.NODE_ENV === 'production' && err.expose !== true
+      ? 'Server error'
+      : message,
+  });
 };

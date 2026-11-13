@@ -1,7 +1,7 @@
 import Resume from '../models/Resume.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
-import { uploadBuffer, verifyPublicDelivery, destroyAsset } from '../services/uploadService.js';
+import { uploadBuffer, destroyAsset } from '../services/uploadService.js';
 
 const getResourceType = (resume) =>
   resume.resourceType || (resume.url?.includes('/raw/upload/') ? 'raw' : 'image');
@@ -28,57 +28,78 @@ export const download = asyncHandler(async (_req, res) => {
   res.redirect(302, url.toString());
 });
 
+
 export const upload = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new AppError('Please select a resume PDF.', 400);
+  }
+
+  if (req.file.mimetype !== 'application/pdf') {
+    throw new AppError('Only PDF files are allowed.', 400);
+  }
+
   const existing = await Resume.findOne({ singleton: 'main' });
+
+  // Upload the new PDF to Cloudinary
   const result = await uploadBuffer(req.file.buffer, {
     folder: 'resume',
-    resourceType: 'image',
+    resourceType: 'raw',
     deliveryType: 'upload',
-    publicId: `resume-${Date.now()}`,
+    publicId: `resume-${Date.now()}.pdf`,
   });
-  try {
-    await verifyPublicDelivery(result.secure_url, 'application/pdf');
-  } catch (err) {
-    try {
-      await destroyAsset(result.public_id, 'image', 'upload', { strict: true });
-    } catch (cleanupErr) {
-      console.error(`Public resume delivery verification failed and the new Cloudinary asset could not be removed: ${cleanupErr.message}`);
-    }
-    throw err;
-  }
-  const fileName = (req.file.originalname || 'Menal-Resume.pdf').replace(/[^\w.\- ]+/g, '_');
+
+  const fileName = (req.file.originalname || 'Menal-Resume.pdf')
+    .replace(/[^\w.\- ]+/g, '_');
+
   let doc;
+
   try {
+    // Save the new resume in MongoDB
     doc = await Resume.findOneAndUpdate(
       { singleton: 'main' },
       {
         url: result.secure_url,
         publicId: result.public_id,
-        resourceType: 'image',
+        resourceType: 'raw',
         fileName,
         size: req.file.size,
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      }
     );
   } catch (err) {
+    // Remove the new upload if database saving fails
     try {
-      await destroyAsset(result.public_id, 'image', 'upload', { strict: true });
+      await destroyAsset(result.public_id, 'raw', 'upload', {
+        strict: true,
+      });
     } catch (cleanupErr) {
-      console.error(`Resume database save failed and the new Cloudinary asset could not be removed: ${cleanupErr.message}`);
+      console.error('New resume cleanup failed:', cleanupErr.message);
     }
+
     throw err;
   }
-  let cleanupWarning;
+
+  // Delete the previous resume only after the new one is saved
   if (existing?.publicId) {
     try {
-      await destroyAsset(existing.publicId, getResourceType(existing), 'upload', { strict: true });
+      await destroyAsset(
+        existing.publicId,
+        getResourceType(existing),
+        'upload',
+        { strict: true }
+      );
     } catch (err) {
-      cleanupWarning = err.message;
-      console.error(`Resume replaced, but the previous Cloudinary asset could not be removed: ${err.message}`);
+      console.error('Old resume cleanup failed:', err.message);
     }
   }
-  res.status(201).json({ ...doc.toObject(), ...(cleanupWarning ? { cleanupWarning } : {}) });
+
+  res.status(201).json(doc);
 });
+
 
 export const remove = asyncHandler(async (_req, res) => {
   const r = await Resume.findOne({ singleton: 'main' });

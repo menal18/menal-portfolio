@@ -49,7 +49,7 @@ Nothing is pre-filled with results, statistics or achievements. Performance figu
 ## 4. Set up Cloudinary
 
 1. Sign in to Cloudinary and open the **Dashboard**. Note the **Cloud name**, **API Key** and **API Secret**.
-2. **Important for the resume PDF:** open *Settings > Security* and make sure **"PDF and ZIP files delivery"** is **enabled** (new accounts have it switched off, which makes the public resume download fail with a 401/ACL error). Save the change. The backend uploads resumes through the signed API as `image/upload` with public access; it does not use an unsigned upload preset. If you add an upload preset in Cloudinary, make sure it does not force authenticated delivery or restricted access.
+2. **Important for the resume PDF:** open *Settings > Security* and make sure **"PDF and ZIP files delivery"** is **enabled**. Save the change. The backend uploads the resume through its authenticated server-side API as a public `raw/upload` asset with a `.pdf` public ID. Confirm the account's access-control rules allow public delivery for this resume; a product-environment ACL can still deny delivery even when the asset's `access_mode` is `public`. Do not weaken rules for other/private assets. The Cloudinary API secret must remain in the backend environment and must never be added to the frontend.
 
 ## 5. Configure and install the backend
 
@@ -167,7 +167,7 @@ This exercises authentication, appearance draft/publish and validation, project 
 
 1. Push the project to GitHub (the `.gitignore` already excludes secrets and `node_modules`).
 2. Create a **Web Service** from the repo with *Root directory* `backend`, *Build command* `npm install`, *Start command* `npm start`.
-3. Set environment variables: `NODE_ENV=production`, `MONGODB_URI`, `JWT_SECRET`, `CLOUDINARY_*`, and `CLIENT_URL=https://your-frontend-domain` (no trailing slash; comma-separate several).
+3. Set environment variables: `NODE_ENV=production`, `MONGODB_URI`, `JWT_SECRET`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, and `CLIENT_URL=https://your-frontend-domain` (no trailing slash; comma-separate several). Set all three Cloudinary values on the backend service only; do not set them as `VITE_*` frontend variables.
 4. In Atlas *Network Access*, allow the host (`0.0.0.0/0` is the simple option).
 5. Create the admin once: run `npm run seed:admin` from your own computer with `MONGODB_URI` pointing at the same Atlas database, or from the host's shell.
 
@@ -197,7 +197,7 @@ Free Render instances sleep after inactivity, so the first request can take arou
 | Site shows "The site could not load" | Backend is not running, or `CLIENT_URL` does not match the site's address |
 | `Origin not allowed by CORS` | Add the exact site origin (with `https://`, without trailing slash) to `CLIENT_URL` |
 | Uploads say Cloudinary is not configured | Fill the three `CLOUDINARY_*` values and restart the backend |
-| Resume upload/download shows a 401 or error page | Enable *PDF and ZIP files delivery* in Cloudinary (step 4.2) and ensure the asset is delivered publicly (not authenticated/restricted) |
+| Resume upload/download shows a 401 or error page | Replace the old resume with a fresh upload (new resumes use `raw/upload`); enable *PDF and ZIP files delivery* in Cloudinary (step 4.2), then check product-environment access controls/ACLs. The PDF setting alone does not override an ACL. Review the backend's verification status and Cloudinary request ID in the logs before changing access rules. |
 | Port already in use | Change `PORT` in `backend\.env` and `DEV_API_TARGET` for the frontend (`DEV_API_TARGET=http://localhost:5001` in `frontend\.env`) |
 | Forgot admin password | Set a new `ADMIN_PASSWORD` in `backend\.env` and run `npm run seed:admin` |
 
