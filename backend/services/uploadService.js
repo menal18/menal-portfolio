@@ -62,31 +62,59 @@ export function uploadBuffer(buffer, { folder, resourceType = 'image', deliveryT
       reject(new AppError(`Cloudinary upload failed: ${error?.message || 'Unknown Cloudinary error'}`, 502));
     };
 
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        folder: `menal-portfolio/${folder}`,
-        resource_type: resourceType,
-        type: deliveryType,
-        access_mode: 'public',
-        public_id: publicId,
-        overwrite: true,
-      },
-      (err, result) => {
-        if (err) return fail(err, 'upload callback');
-        if (!result?.secure_url || !result.public_id) {
-          return fail(new Error('Cloudinary upload did not return a public URL and asset ID'), 'upload response');
-        }
-        settled = true;
-        resolve(result);
-      }
-    );
-    stream.on('error', (err) => fail(err, 'upload stream'));
     try {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: `menal-portfolio/${folder}`,
+          resource_type: resourceType,
+          type: deliveryType,
+          public_id: publicId,
+          overwrite: true,
+        },
+        (err, result) => {
+          if (err) return fail(err, 'upload callback');
+          if (!result?.secure_url || !result.public_id) {
+            return fail(new Error('Cloudinary upload did not return a public URL and asset ID'), 'upload response');
+          }
+          settled = true;
+          resolve(result);
+        }
+      );
+      stream.on('error', (err) => fail(err, 'upload stream'));
       stream.end(buffer);
     } catch (err) {
-      fail(err, 'upload stream');
+      fail(err, 'upload setup or stream');
     }
   });
+}
+
+async function verifyPdfBytes(url) {
+  const response = await fetch(url, {
+    headers: { Range: 'bytes=0-4' },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    return false;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) return false;
+  try {
+    const chunks = [];
+    let length = 0;
+    while (length < 5) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      chunks.push(chunk);
+      length += chunk.length;
+    }
+    return Buffer.concat(chunks, length).subarray(0, 5).toString() === '%PDF-';
+  } finally {
+    await reader.cancel();
+  }
 }
 
 export async function verifyPublicDelivery(url, expectedContentType) {
@@ -114,7 +142,17 @@ export async function verifyPublicDelivery(url, expectedContentType) {
   const contentType = response.headers.get('content-type') || '';
   const mediaType = contentType.split(';', 1)[0].trim().toLowerCase();
   const expectedMediaType = expectedContentType.split(';', 1)[0].trim().toLowerCase();
-  if (!response.ok || mediaType !== expectedMediaType) {
+  const rawPdf = mediaType === 'application/octet-stream' &&
+    new URL(url).pathname.toLowerCase().endsWith('.pdf');
+  let validRawPdf = false;
+  if (response.ok && rawPdf) {
+    try {
+      validRawPdf = await verifyPdfBytes(url);
+    } catch (err) {
+      logCloudinaryError('PDF content verification', err, { host: deliveryHost });
+    }
+  }
+  if (!response.ok || (mediaType !== expectedMediaType && !validRawPdf)) {
     const cloudinaryError = !response.ok && mediaType === 'application/json'
       ? await getDeliveryErrorDetails(url)
       : null;

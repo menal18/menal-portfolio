@@ -1,7 +1,7 @@
 import Resume from '../models/Resume.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/AppError.js';
-import { uploadBuffer, destroyAsset } from '../services/uploadService.js';
+import { uploadBuffer, verifyPublicDelivery, destroyAsset } from '../services/uploadService.js';
 
 const getResourceType = (resume) =>
   resume.resourceType || (resume.url?.includes('/raw/upload/') ? 'raw' : 'image');
@@ -40,13 +40,23 @@ export const upload = asyncHandler(async (req, res) => {
 
   const existing = await Resume.findOne({ singleton: 'main' });
 
-  // Upload the new PDF to Cloudinary
   const result = await uploadBuffer(req.file.buffer, {
     folder: 'resume',
-    resourceType: 'image',
+    resourceType: 'raw',
     deliveryType: 'upload',
     publicId: `resume-${Date.now()}.pdf`,
   });
+
+  try {
+    await verifyPublicDelivery(result.secure_url, 'application/pdf');
+  } catch (err) {
+    try {
+      await destroyAsset(result.public_id, 'raw', 'upload', { strict: true });
+    } catch (cleanupErr) {
+      console.error(`Resume delivery verification failed and the new Cloudinary asset could not be removed: ${cleanupErr.message}`);
+    }
+    throw err;
+  }
 
   const fileName = (req.file.originalname || 'Menal-Resume.pdf')
     .replace(/[^\w.\- ]+/g, '_');
@@ -54,13 +64,12 @@ export const upload = asyncHandler(async (req, res) => {
   let doc;
 
   try {
-    // Save the new resume in MongoDB
     doc = await Resume.findOneAndUpdate(
       { singleton: 'main' },
       {
         url: result.secure_url,
         publicId: result.public_id,
-        resourceType: 'image',
+        resourceType: 'raw',
         fileName,
         size: req.file.size,
       },
@@ -71,9 +80,8 @@ export const upload = asyncHandler(async (req, res) => {
       }
     );
   } catch (err) {
-    // Remove the new upload if database saving fails
     try {
-      await destroyAsset(result.public_id, 'image', 'upload', {
+      await destroyAsset(result.public_id, 'raw', 'upload', {
         strict: true,
       });
     } catch (cleanupErr) {
@@ -83,7 +91,6 @@ export const upload = asyncHandler(async (req, res) => {
     throw err;
   }
 
-  // Delete the previous resume only after the new one is saved
   if (existing?.publicId) {
     try {
       await destroyAsset(
