@@ -43,7 +43,7 @@ export const upload = asyncHandler(async (req, res) => {
   // Upload the new PDF to Cloudinary
   const result = await uploadBuffer(req.file.buffer, {
     folder: 'resume',
-    resourceType: 'raw',
+    resourceType: 'image',
     deliveryType: 'upload',
     publicId: `resume-${Date.now()}.pdf`,
   });
@@ -60,7 +60,7 @@ export const upload = asyncHandler(async (req, res) => {
       {
         url: result.secure_url,
         publicId: result.public_id,
-        resourceType: 'raw',
+        resourceType: 'image',
         fileName,
         size: req.file.size,
       },
@@ -73,7 +73,7 @@ export const upload = asyncHandler(async (req, res) => {
   } catch (err) {
     // Remove the new upload if database saving fails
     try {
-      await destroyAsset(result.public_id, 'raw', 'upload', {
+      await destroyAsset(result.public_id, 'image', 'upload', {
         strict: true,
       });
     } catch (cleanupErr) {
