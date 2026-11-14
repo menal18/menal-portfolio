@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import api, { errMsg } from '../services/api.js';
-import { Empty, Field, PageHeader, Spinner, useToast } from './ui.jsx';
+import { Empty, Field, PageHeader, Spinner, useConfirm, useToast } from './ui.jsx';
 
 // Config-driven list + inline form used for categories, skills and experience
 function CrudPage({ title, sub, endpoint, blank, fields, line, noun, arrayFields = [] }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [items, setItems] = useState(null);
   const [form, setForm] = useState(blank);
   const [editing, setEditing] = useState(null);
@@ -34,7 +35,7 @@ function CrudPage({ title, sub, endpoint, blank, fields, line, noun, arrayFields
     } catch (x) { toast(errMsg(x), 'error'); } finally { setBusy(false); }
   };
   const del = async (it) => {
-    if (!window.confirm(`Delete this ${noun.toLowerCase()}?`)) return;
+    if (!await confirm({ title: `Delete this ${noun.toLowerCase()}?`, message: 'This change cannot be undone.', confirmLabel: `Delete ${noun.toLowerCase()}` })) return;
     try { await api.delete(`/admin/${endpoint}/${it._id}`); toast(`${noun} deleted`); if (editing === it._id) reset(); load(); } catch (x) { toast(errMsg(x), 'error'); }
   };
   const edit = (it) => {
@@ -51,7 +52,7 @@ function CrudPage({ title, sub, endpoint, blank, fields, line, noun, arrayFields
   return (
     <>
       <PageHeader title={title} sub={sub} />
-      <form className="a-form inline" onSubmit={submit}>
+      <form className="a-form inline a-editor-form" onSubmit={submit}>
         <h2>{editing ? `Edit ${noun.toLowerCase()}` : `Add ${noun.toLowerCase()}`}</h2>
         <div className="a-cols">
           {fields.map((fl) => fl.type === 'checkbox' ? (

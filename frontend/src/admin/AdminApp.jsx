@@ -20,7 +20,7 @@ const NAV = [
   ['/admin/projects', 'Projects', FolderKanban],
   ['/admin/categories', 'Categories', Tag],
   ['/admin/marketing', 'Marketing', Megaphone],
-  ['/admin/profile', 'About and contact', User],
+  ['/admin/profile', 'About & Contact', User],
   ['/admin/appearance', 'Appearance & Design', Palette],
   ['/admin/skills', 'Expertise', Sparkles],
   ['/admin/experience', 'Experience', Briefcase],
@@ -35,22 +35,33 @@ function Shell() {
   const loc = useLocation();
   if (checking) return <div className="admin"><p className="a-loading">Checking session...</p></div>;
   if (!admin) return <Navigate to="/admin/login" replace state={{ from: loc.pathname }} />;
+  const initial = (admin.username || admin.email || 'A').charAt(0).toUpperCase();
   return (
     <div className="admin">
       <header className="a-top">
-        <button type="button" className="icon-btn" aria-label="Toggle menu" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
-        <strong>Menal. admin</strong>
+        <button type="button" className="icon-btn" aria-label="Toggle navigation" aria-expanded={open} aria-controls="admin-navigation" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
+        <div className="a-top-brand"><strong>Menal<span>.</span></strong><small>Creative Portfolio Admin</small></div>
       </header>
-      <aside className={`a-side ${open ? 'open' : ''}`}>
-        <div className="a-brand">Menal<span>.</span> <small>admin</small></div>
-        <nav>
+      <aside className={`a-side ${open ? 'open' : ''}`} id="admin-navigation">
+        <div className="a-brand-block">
+          <div className="a-brand">Menal<span>.</span></div>
+          <p>Creative Portfolio Admin</p>
+        </div>
+        <nav aria-label="Admin navigation">
           {NAV.map(([to, label, Icon, end]) => (
-            <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}><Icon size={18} /> {label}</NavLink>
+            <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}>
+              <Icon size={18} aria-hidden="true" />
+              <span>{label}</span>
+            </NavLink>
           ))}
         </nav>
         <div className="a-side-foot">
-          <a href="/" target="_blank" rel="noopener noreferrer"><Globe size={18} /> View site</a>
-          <button type="button" onClick={logout}><LogOut size={18} /> Sign out</button>
+          <div className="a-profile">
+            <span className="a-avatar" aria-hidden="true">{initial}</span>
+            <span className="a-profile-copy"><strong>{admin.username || 'Administrator'}</strong><small>Portfolio admin</small></span>
+          </div>
+          <a href="/" target="_blank" rel="noopener noreferrer"><Globe size={18} aria-hidden="true" /> <span>View website</span></a>
+          <button type="button" onClick={logout}><LogOut size={18} aria-hidden="true" /> <span>Sign out</span></button>
         </div>
       </aside>
       {open && <div className="a-scrim" onClick={() => setOpen(false)} />}

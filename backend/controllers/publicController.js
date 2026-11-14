@@ -15,7 +15,7 @@ export const home = asyncHandler(async (_req, res) => {
     Skill.find({ active: { $ne: false } }).sort({ group: 1, order: 1, name: 1 }),
     Experience.find().sort({ order: 1, createdAt: -1 }),
     Category.find().sort({ order: 1, name: 1 }),
-    Project.find({ status: 'published' }).populate('category', 'name slug').sort({ featured: -1, order: 1, createdAt: -1 }).select('-gallery -coverImage.publicId'),
+    Project.find({ status: 'published' }).populate('category', 'name slug').sort({ featured: -1, order: 1, createdAt: -1 }).select('-gallery.publicId -gallery._id -coverImage.publicId -coverImage._id'),
     MarketingCampaign.find({ status: 'published' }).sort({ featured: -1, order: 1, createdAt: -1 }).select('-creatives.publicId -coverImage.publicId'),
     Resume.findOne({ singleton: 'main' }),
   ]);

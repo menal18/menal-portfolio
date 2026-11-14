@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Download, Trash2, Upload } from 'lucide-react';
 import api, { errMsg, resumeUrl } from '../services/api.js';
-import { PageHeader, Spinner, fmtDate, useToast } from './ui.jsx';
+import { PageHeader, Spinner, fmtDate, useConfirm, useToast } from './ui.jsx';
 
 export default function ResumeAdmin() {
   const toast = useToast();
+  const confirm = useConfirm();
   const [meta, setMeta] = useState(null);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -32,7 +33,7 @@ export default function ResumeAdmin() {
     } catch (e) { toast(errMsg(e), 'error'); } finally { setBusy(false); }
   };
   const remove = async () => {
-    if (!window.confirm('Remove the resume? The download button will disappear from the site.')) return;
+    if (!await confirm({ title: 'Remove the resume?', message: 'The public resume download will no longer be available.', confirmLabel: 'Remove resume' })) return;
     try { await api.delete('/admin/resume'); toast('Resume removed'); load(); } catch (e) { toast(errMsg(e), 'error'); }
   };
 
@@ -54,8 +55,12 @@ export default function ResumeAdmin() {
       </section>
       <section className="a-panel">
         <h2>{meta.available ? 'Replace resume' : 'Upload resume'}</h2>
-        <div className="a-field"><label htmlFor="pdf">PDF file (max 10 MB)</label><input id="pdf" type="file" accept="application/pdf" onChange={pick} /></div>
-        <button type="button" className="a-btn primary" disabled={!file || busy} onClick={upload}><Upload size={16} /> {busy ? 'Uploading...' : 'Upload'}</button>
+        <label className="a-resume-upload" htmlFor="pdf">
+          <span className="a-upload-icon"><Upload size={19} aria-hidden="true" /></span>
+          <span><strong>{file?.name || 'Choose a PDF file'}</strong><small>PDF only · Maximum 10 MB</small></span>
+          <input id="pdf" className="a-file-input" type="file" accept="application/pdf" onChange={pick} />
+        </label>
+        <button type="button" className="a-btn primary" disabled={!file || busy} onClick={upload}><Upload size={16} /> {busy ? 'Uploading...' : 'Upload resume'}</button>
       </section>
     </>
   );

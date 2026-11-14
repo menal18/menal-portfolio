@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Eye, EyeOff, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { ArrowUpRight, Eye, EyeOff, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import api, { errMsg } from '../services/api.js';
-import { Empty, Field, ImagePicker, PageHeader, Spinner, useToast } from './ui.jsx';
+import { Empty, Field, ImagePicker, PageHeader, Spinner, useConfirm, useToast, fmtDate } from './ui.jsx';
 import { placeholder } from '../services/images.js';
 
 export function ProjectList() {
   const toast = useToast();
+  const confirm = useConfirm();
   const [list, setList] = useState(null);
   const load = useCallback(() => api.get('/admin/projects').then((r) => setList(r.data)).catch((e) => toast(errMsg(e), 'error')), [toast]);
   useEffect(() => { load(); }, [load]);
@@ -15,7 +16,7 @@ export function ProjectList() {
     try { await api.patch(`/admin/projects/${p._id}/status`, body); toast(msg); load(); } catch (e) { toast(errMsg(e), 'error'); }
   };
   const del = async (p) => {
-    if (!window.confirm(`Delete "${p.title}" and its images? This cannot be undone.`)) return;
+    if (!await confirm({ title: `Delete "${p.title}"?`, message: 'This will permanently remove the project and its uploaded images.', confirmLabel: 'Delete project' })) return;
     try { await api.delete(`/admin/projects/${p._id}`); toast('Project deleted'); load(); } catch (e) { toast(errMsg(e), 'error'); }
   };
 
@@ -23,20 +24,34 @@ export function ProjectList() {
     <>
       <PageHeader title="Projects" sub="Published projects appear on the public site immediately."><Link className="a-btn primary" to="/admin/projects/new"><Plus size={16} /> New project</Link></PageHeader>
       {!list ? <Spinner /> : list.length === 0 ? <Empty>No projects yet. Create your first one.</Empty> : (
-        <ul className="a-rows">
+        <ul className="a-entity-grid">
           {list.map((p) => (
-            <li key={p._id}>
-              <img src={p.coverImage?.url || placeholder(p.title, p.title, 160, 100)} alt="" />
-              <div className="a-row-main">
-                <strong>{p.title}</strong>
-                <span className="muted">{p.category?.name}</span>
-              </div>
-              <span className={`pill ${p.status}`}>{p.status}</span>
-              <div className="a-row-actions">
-                <button type="button" className={`icon-btn ${p.featured ? 'on' : ''}`} title={p.featured ? 'Remove from featured' : 'Feature'} aria-label="Toggle featured" onClick={() => patch(p, { featured: !p.featured }, p.featured ? 'Unfeatured' : 'Featured')}><Star size={16} /></button>
-                <button type="button" className="icon-btn" title={p.status === 'published' ? 'Unpublish' : 'Publish'} aria-label="Toggle published" onClick={() => patch(p, { status: p.status === 'published' ? 'draft' : 'published' }, p.status === 'published' ? 'Unpublished' : 'Published')}>{p.status === 'published' ? <EyeOff size={16} /> : <Eye size={16} />}</button>
-                <Link className="icon-btn" to={`/admin/projects/${p._id}`} aria-label="Edit"><Pencil size={16} /></Link>
-                <button type="button" className="icon-btn danger" aria-label="Delete" onClick={() => del(p)}><Trash2 size={16} /></button>
+            <li className="a-entity-card" key={p._id}>
+              <Link className="a-entity-image" to={`/admin/projects/${p._id}`} aria-label={`Edit ${p.title}`}>
+                <img src={p.coverImage?.url || placeholder(p.title, p.title, 480, 300)} alt="" />
+                <span>View project <ArrowUpRight size={15} /></span>
+              </Link>
+              <div className="a-entity-content">
+                <div className="a-entity-title-row">
+                  <div className="a-entity-title">
+                    <h2><Link to={`/admin/projects/${p._id}`}>{p.title}</Link></h2>
+                    <p>{p.category?.name || 'Uncategorized'}</p>
+                  </div>
+                  <div className="a-badges">
+                    <span className={`a-status ${p.status}`}>{p.status}</span>
+                    {p.featured && <span className="a-badge-featured"><Star size={12} fill="currentColor" /> Featured</span>}
+                  </div>
+                </div>
+                {p.summary && <p className="a-entity-summary">{p.summary}</p>}
+                <div className="a-entity-footer">
+                  <span className="a-entity-date">Updated {fmtDate(p.updatedAt || p.createdAt)}</span>
+                  <div className="a-row-actions">
+                    <button type="button" className={`icon-btn ${p.featured ? 'on' : ''}`} title={p.featured ? 'Remove from featured' : 'Feature'} aria-label={p.featured ? 'Remove from featured' : 'Feature project'} onClick={() => patch(p, { featured: !p.featured }, p.featured ? 'Unfeatured' : 'Featured')}><Star size={16} /></button>
+                    <button type="button" className="icon-btn" title={p.status === 'published' ? 'Unpublish' : 'Publish'} aria-label={p.status === 'published' ? 'Unpublish project' : 'Publish project'} onClick={() => patch(p, { status: p.status === 'published' ? 'draft' : 'published' }, p.status === 'published' ? 'Unpublished' : 'Published')}>{p.status === 'published' ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+                    <Link className="icon-btn" to={`/admin/projects/${p._id}`} aria-label={`Edit ${p.title}`}><Pencil size={16} /></Link>
+                    <button type="button" className="icon-btn danger" aria-label={`Delete ${p.title}`} onClick={() => del(p)}><Trash2 size={16} /></button>
+                  </div>
+                </div>
               </div>
             </li>
           ))}
@@ -99,7 +114,7 @@ export function ProjectForm() {
   return (
     <>
       <PageHeader title={id ? 'Edit project' : 'New project'} />
-      <form className="a-form" onSubmit={submit}>
+      <form className="a-form a-editor-form" onSubmit={submit}>
         <Field label="Title" htmlFor="t"><input id="t" value={f.title} onChange={set('title')} required maxLength={120} /></Field>
         <Field label="Category" htmlFor="c">
           <select id="c" value={f.category} onChange={set('category')} required>

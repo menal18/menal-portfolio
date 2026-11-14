@@ -1,15 +1,24 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ChevronLeft, ChevronRight, ArrowUpRight } from "lucide-react";
 import Reveal from "./Reveal.jsx";
 import SectionHead from "./SectionHead.jsx";
 import { imgOf, optimize } from "../services/images.js";
 import { DEVELOPMENT_FOCUS } from "../data/portfolioContent.js";
 import { useSite } from "../context/SiteContext.jsx";
 
+function getCarouselPosition(index, selectedIndex, length) {
+  const forward = (index - selectedIndex + length) % length;
+  return forward > length / 2 ? forward - length : forward;
+}
+
 export default function DevProjects({ projects, categories }) {
   const { appearance } = useSite();
   const season = appearance.season;
   const [cat, setCat] = useState("all");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const used = useMemo(
     () =>
       categories.filter((c) =>
@@ -17,6 +26,41 @@ export default function DevProjects({ projects, categories }) {
       ),
     [categories, projects],
   );
+  const shown = useMemo(
+    () =>
+      cat === "all"
+        ? projects
+        : projects.filter((p) => p.category?.slug === cat),
+    [cat, projects],
+  );
+  const activeIndex = shown.length ? selectedIndex % shown.length : 0;
+  const selectedProject = shown[activeIndex];
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [cat]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+    return () => mediaQuery.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    if (shown.length < 2 || isPaused || prefersReducedMotion) return undefined;
+    const timer = window.setInterval(() => {
+      setSelectedIndex((current) => (current + 1) % shown.length);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [isPaused, prefersReducedMotion, shown.length]);
+
+  const moveSelection = (step) => {
+    if (!shown.length) return;
+    setSelectedIndex((current) => (current + step + shown.length) % shown.length);
+  };
+
   if (!projects.length) {
     return (
       <section id="development" className="section alt">
@@ -37,8 +81,6 @@ export default function DevProjects({ projects, categories }) {
       </section>
     );
   }
-  const shown =
-    cat === "all" ? projects : projects.filter((p) => p.category?.slug === cat);
 
   return (
     <section id="development" className="section alt">
@@ -76,37 +118,136 @@ export default function DevProjects({ projects, categories }) {
                 </button>
               ))}
             </div>
-            <div className="dev-grid">
-              {shown.map((p, i) => (
-                <Reveal
-                  key={p._id}
-                  delay={(i % 3) * 80}
-                  className={`dev-item v${i % 5}`}
-                >
-                  <Link to={`/projects/${p.slug}`} className="dev-link">
-                    <div className="dev-media">
-                      <img
-                        src={optimize(imgOf(p, undefined, season), 900)}
-                        alt={`${p.title} cover`}
-                        loading="lazy"
-                      />
-                    </div>
-                    <div className="dev-body">
-                      <h3>{p.title}</h3>
-                      {p.summary && <p>{p.summary}</p>}
-                      {p.technologies?.length > 0 && (
-                        <ul className="tags">
-                          {p.technologies.slice(0, 5).map((t) => (
-                            <li key={t} className="tag">
-                              {t}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+            <div
+              className="dev-carousel"
+              onMouseEnter={() => setIsPaused(true)}
+              onMouseLeave={() => setIsPaused(false)}
+              onFocus={() => setIsPaused(true)}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setIsPaused(false);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  moveSelection(-1);
+                } else if (event.key === "ArrowRight") {
+                  event.preventDefault();
+                  moveSelection(1);
+                }
+              }}
+            >
+              <div
+                className="dev-carousel-viewport"
+                role="group"
+                aria-label="Development project carousel"
+              >
+                <div className="dev-carousel-stage">
+                  {shown.map((project, index) => {
+                    const position = getCarouselPosition(
+                      index,
+                      activeIndex,
+                      shown.length,
+                    );
+                    const isSelected = index === activeIndex;
+                    const isOffstage = Math.abs(position) > 1;
+                    const mediaClass = project.title
+                      ?.toLowerCase()
+                      .includes("cake n take")
+                      ? " dev-media-contain"
+                      : "";
+
+                    return (
+                      <Link
+                        key={project._id}
+                        to={`/projects/${project.slug}`}
+                        className={`dev-carousel-card dev-link${isSelected ? " is-selected" : ""}`}
+                        data-position={position}
+                        aria-label={`View ${project.title} project`}
+                        aria-current={isSelected ? "true" : undefined}
+                        aria-hidden={isOffstage}
+                        tabIndex={isOffstage ? -1 : 0}
+                        onClick={() => setSelectedIndex(index)}
+                      >
+                        <div className={`dev-media${mediaClass}`}>
+                          <img
+                            src={optimize(imgOf(project, undefined, season), 900)}
+                            alt={`${project.title} cover`}
+                            loading={isSelected ? "eager" : "lazy"}
+                          />
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {selectedProject && (
+                <div className="dev-selection" aria-live="off">
+                  <div className="dev-body">
+                    {selectedProject.category?.name && (
+                      <p className="dev-selection-category">
+                        {selectedProject.category.name}
+                      </p>
+                    )}
+                    <h3>{selectedProject.title}</h3>
+                    {selectedProject.summary && <p>{selectedProject.summary}</p>}
+                    {selectedProject.technologies?.length > 0 && (
+                      <ul className="tags">
+                        {selectedProject.technologies.slice(0, 5).map((technology) => (
+                          <li key={technology} className="tag">
+                            {technology}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <Link
+                    to={`/projects/${selectedProject.slug}`}
+                    className="dev-selection-link"
+                  >
+                    View project <ArrowUpRight size={17} aria-hidden="true" />
                   </Link>
-                </Reveal>
-              ))}
+                </div>
+              )}
+
+              {shown.length > 1 && (
+                <div className="dev-carousel-controls">
+                  <button
+                    type="button"
+                    className="dev-carousel-arrow"
+                    aria-label="Previous development project"
+                    onClick={() => moveSelection(-1)}
+                  >
+                    <ChevronLeft size={20} aria-hidden="true" />
+                  </button>
+                  <div className="dev-carousel-dots" role="group" aria-label="Choose a development project">
+                    {shown.map((project, index) => (
+                      <button
+                        key={project._id}
+                        type="button"
+                        className={`dev-carousel-dot${index === activeIndex ? " is-active" : ""}`}
+                        aria-label={`Show ${project.title}`}
+                        aria-pressed={index === activeIndex}
+                        onClick={() => setSelectedIndex(index)}
+                      />
+                    ))}
+                  </div>
+                  <span className="dev-carousel-count">
+                    {String(activeIndex + 1).padStart(2, "0")} /{" "}
+                    {String(shown.length).padStart(2, "0")}
+                  </span>
+                  <button
+                    type="button"
+                    className="dev-carousel-arrow"
+                    aria-label="Next development project"
+                    onClick={() => moveSelection(1)}
+                  >
+                    <ChevronRight size={20} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}

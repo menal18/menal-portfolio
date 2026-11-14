@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Github } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ExternalLink, Github, ZoomIn } from 'lucide-react';
 import api, { errMsg } from '../services/api.js';
 import { imgOf, optimize } from '../services/images.js';
 import { parseVideo } from '../services/video.js';
@@ -45,63 +46,126 @@ export default function ProjectPage() {
   const gallery = p.gallery || [];
 
   return (
-    <main className="pp">
-      <header className="pp-head container">
-        <Link className="back" to="/#projects"><ArrowLeft size={16} /> Projects</Link>
-        <p className="muted">{p.category?.name}</p>
-        <h1 className="display pp-title">{p.title}</h1>
-        {p.summary && <p className="lead">{p.summary}</p>}
-        <div className="pp-links">
-          {p.liveUrl && <a className="btn primary" href={p.liveUrl} target="_blank" rel="noopener noreferrer">Live demo <ExternalLink size={16} /></a>}
-          {p.githubUrl && <a className="btn ghost" href={p.githubUrl} target="_blank" rel="noopener noreferrer"><Github size={16} /> Source code</a>}
-        </div>
-      </header>
+    <main className="pp" data-season={season}>
+        <header className="pp-head container">
+          <Link className="back pp-back" to="/#projects"><ArrowLeft size={16} /> Projects</Link>
+          <div className="pp-hero-layout">
+            <div className="pp-hero-copy">
+              {p.category?.name && <p className="pp-category">{p.category.name}</p>}
+              <h1 className="display pp-title">{p.title}</h1>
+              {p.summary && <p className="lead">{p.summary}</p>}
+              <div className="pp-links">
+                {p.liveUrl && <a className="btn primary pp-cta" href={p.liveUrl} target="_blank" rel="noopener noreferrer">Live demo <ExternalLink size={16} /></a>}
+                {p.githubUrl && <a className="btn ghost pp-cta" href={p.githubUrl} target="_blank" rel="noopener noreferrer"><Github size={16} /> Source code</a>}
+              </div>
+            </div>
+            <div className="pp-hero-art" aria-hidden="true">
+              <span className="pp-art-orbit" />
+              <span className="pp-art-disc" />
+              <span className="pp-art-mark" />
+              <span className="pp-art-caption"><span>Seasonal edition</span><strong>{season}</strong></span>
+            </div>
+          </div>
+        </header>
 
-      <div className="pp-cover container"><img src={optimize(imgOf(p, undefined, season), 1600)} alt={`${p.title} cover`} /></div>
-
-      <div className="container pp-grid">
-        <Reveal as="aside" className="pp-meta">
-          {p.technologies?.length > 0 && (<><h2>Technologies</h2><ul className="tags">{p.technologies.map((t) => <li className="tag" key={t}>{t}</li>)}</ul></>)}
+        <Reveal className="container pp-showcase">
+          <figure className="pp-cover">
+            <img src={optimize(imgOf(p, undefined, season), 1600)} alt={`${p.title} cover`} />
+            <figcaption className="pp-preview-label"><span className="pp-preview-dot" /> Project preview</figcaption>
+          </figure>
         </Reveal>
-        <Reveal className="pp-desc">
-          {p.description ? p.description.split(/\n+/).map((t, i) => <p key={i}>{t}</p>) : <p className="muted">A full write-up is coming soon.</p>}
-        </Reveal>
-      </div>
 
-      {video && (
-        <div className="container pp-video">
-          {video.type === 'iframe' && <iframe src={video.src} title={`${p.title} video`} allow="accelerometer; encrypted-media; picture-in-picture" allowFullScreen loading="lazy" />}
-          {video.type === 'video' && <video src={video.src} controls preload="metadata" />}
-          {video.type === 'link' && <a className="btn ghost" href={video.src} target="_blank" rel="noopener noreferrer">Watch video <ExternalLink size={16} /></a>}
-        </div>
-      )}
-
-      {gallery.length > 0 && (
-        <section className="container pp-gallery" aria-label="Project gallery">
-          <h2>Gallery</h2>
-          <div className="gallery-grid">
-            {gallery.map((g, i) => (
-              <Reveal key={g._id || i} delay={(i % 3) * 70} className={`g-item g${i % 4}`}>
-                <button type="button" onClick={() => setLb(i)} aria-label={`Open image ${i + 1} of ${gallery.length}`}>
-                  <img src={optimize(g.url, 900)} alt={`${p.title} screenshot ${i + 1}`} loading="lazy" />
-                </button>
-              </Reveal>
-            ))}
+        <section className="container pp-story" aria-labelledby="pp-story-title">
+          <header className="pp-section-heading">
+            <span className="pp-section-number" aria-hidden="true">01</span>
+            <div>
+              <p className="pp-eyebrow">The case study</p>
+              <h2 id="pp-story-title">Behind the project</h2>
+            </div>
+          </header>
+          <div className="pp-grid">
+            <Reveal as="aside" className="pp-meta">
+              <p className="pp-overline">Technologies</p>
+              {p.technologies?.length > 0 && (
+                <ul className="pp-tech-list" aria-label="Technologies">
+                  {p.technologies.map((t, i) => <li className="pp-tech-pill" key={t}><span>{String(i + 1).padStart(2, '0')}</span>{t}</li>)}
+                </ul>
+              )}
+            </Reveal>
+            <Reveal className="pp-desc">
+              {p.description ? p.description.split(/\n+/).map((t, i) => <p key={i}>{t}</p>) : <p className="muted">A full write-up is coming soon.</p>}
+            </Reveal>
           </div>
         </section>
-      )}
-      {lb >= 0 && <Lightbox images={gallery} index={lb} onIndex={setLb} onClose={() => setLb(-1)} />}
 
-      {related.length > 0 && (
-        <section className="container pp-related">
-          <h2>More in {p.category?.name}</h2>
-          <ul>
-            {related.map((r) => (
-              <li key={r._id}><Link to={`/projects/${r.slug}`} className="index-row"><img className="index-thumb" src={optimize(imgOf(r, undefined, season), 400)} alt="" /><span className="index-title">{r.title}</span></Link></li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </main>
+        {video && (
+          <Reveal as="section" className="container pp-video" aria-labelledby="pp-video-title">
+            <header className="pp-section-heading pp-video-heading">
+              <span className="pp-section-number" aria-hidden="true">02</span>
+              <div>
+                <p className="pp-eyebrow">A closer look</p>
+                <h2 id="pp-video-title">In motion</h2>
+              </div>
+            </header>
+            <div className="pp-video-frame">
+              {video.type === 'iframe' && <iframe src={video.src} title={`${p.title} video`} allow="accelerometer; encrypted-media; picture-in-picture" allowFullScreen loading="lazy" />}
+              {video.type === 'video' && <video src={video.src} controls preload="metadata" />}
+              {video.type === 'link' && <a className="btn ghost" href={video.src} target="_blank" rel="noopener noreferrer">Watch video <ExternalLink size={16} /></a>}
+            </div>
+          </Reveal>
+        )}
+
+        {gallery.length > 0 && (
+          <section className="container pp-gallery" aria-labelledby="pp-gallery-title">
+            <header className="pp-section-heading">
+              <span className="pp-section-number" aria-hidden="true">{video ? '03' : '02'}</span>
+              <div>
+                <p className="pp-eyebrow">Selected screens</p>
+                <h2 id="pp-gallery-title">A closer look</h2>
+              </div>
+            </header>
+            <div className="pp-premium-gallery-grid">
+              {gallery.map((g, i) => (
+                <Reveal key={g._id || i} delay={(i % 3) * 70} className="pp-gallery-card">
+                  <button type="button" onClick={() => setLb(i)} aria-label={`Open image ${i + 1} of ${gallery.length}`}>
+                    <img src={optimize(g.url, 900)} alt={`${p.title} screenshot ${i + 1}`} loading="lazy" />
+                    <span className="pp-gallery-number" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+                    <span className="pp-gallery-zoom" aria-hidden="true"><ZoomIn size={18} /></span>
+                  </button>
+                </Reveal>
+              ))}
+            </div>
+          </section>
+        )}
+        {lb >= 0 && createPortal(<Lightbox images={gallery} index={lb} onIndex={setLb} onClose={() => setLb(-1)} />, document.body)}
+
+        {related.length > 0 && (
+          <Reveal as="section" className="container pp-related" aria-labelledby="pp-related-title">
+            <header className="pp-section-heading">
+              <span className="pp-section-number" aria-hidden="true">{gallery.length > 0 ? (video ? '04' : '03') : (video ? '03' : '02')}</span>
+              <div>
+                <p className="pp-eyebrow">Continue exploring</p>
+                <h2 id="pp-related-title">More in {p.category?.name}</h2>
+              </div>
+            </header>
+            <ul className="pp-related-grid">
+              {related.map((r, i) => (
+                <Reveal as="li" key={r._id} delay={(i % 2) * 90}>
+                  <Link to={`/projects/${r.slug}`} className="pp-related-card">
+                    <span className="pp-related-image">
+                      <img src={optimize(imgOf(r, undefined, season), 700)} alt={`${r.title} cover`} loading="lazy" />
+                      <span className="pp-related-arrow" aria-hidden="true"><ArrowRight size={19} /></span>
+                    </span>
+                    <span className="pp-related-info">
+                      {r.category?.name && <span className="pp-related-category">{r.category.name}</span>}
+                      <span className="pp-related-title">{r.title}</span>
+                    </span>
+                  </Link>
+                </Reveal>
+              ))}
+            </ul>
+          </Reveal>
+        )}
+      </main>
   );
 }

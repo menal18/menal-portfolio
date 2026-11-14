@@ -58,12 +58,18 @@ export default function Nav({ name = "Menal", ready, hasMarketing = true }) {
   }, [pathname, ready, hasMarketing]);
 
   return (
-    <header className={`nav ${scrolled ? "scrolled" : ""}`}>
+    <header
+      className={`nav ${scrolled ? "scrolled" : ""}${open ? " menu-open" : ""}`}
+    >
       <Link to="/#home" className="nav-brand">
         {name}
         <span>.</span>
       </Link>
-      <nav className={`nav-links ${open ? "open" : ""}`} aria-label="Primary">
+      <nav
+        id="primary-navigation"
+        className={`nav-links ${open ? "open" : ""}`}
+        aria-label="Primary"
+      >
         {LINKS.filter(([id]) => id !== "marketing" || hasMarketing).map(
           ([id, label], idx) => (
             <Link
@@ -99,6 +105,7 @@ export default function Nav({ name = "Menal", ready, hasMarketing = true }) {
         className="nav-toggle"
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
+        aria-controls="primary-navigation"
         onClick={() => setOpen((o) => !o)}
       >
         {open ? <X size={22} /> : <Menu size={22} />}

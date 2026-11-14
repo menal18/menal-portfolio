@@ -1,33 +1,158 @@
-import { useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Github, Globe } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpRight,
+  Github,
+  Globe,
+} from "lucide-react";
 import Reveal from "./Reveal.jsx";
 import SectionHead from "./SectionHead.jsx";
-import { imgOf, optimize, placeholder } from "../services/images.js";
+import { imgOf, optimize } from "../services/images.js";
 import { useSite } from "../context/SiteContext.jsx";
 
-function ProjectImage({ project, season, width = 500, className = "" }) {
-  const image = optimize(imgOf(project, undefined, season), width);
-  return (
-    <img
-      className={className}
-      src={image}
-      alt={`${project.title || "Project"} preview`}
-      loading="lazy"
-      decoding="async"
-      onError={(event) => {
-        event.currentTarget.onerror = null;
-        event.currentTarget.src = placeholder(
-          project.title || "project",
-          project.title || "Project",
-          1200,
-          800,
-          season,
-        );
-      }}
-    />
+const ProjectShowcase = memo(function ProjectShowcase({ project, season }) {
+  const images = useMemo(() => {
+    const sources = [
+      project.coverImage?.url
+        ? { url: project.coverImage.url, description: "cover image" }
+        : null,
+      ...(Array.isArray(project.gallery)
+        ? project.gallery.map((image, index) =>
+            image?.url
+              ? { url: image.url, description: `gallery image ${index + 1}` }
+              : null,
+          )
+        : []),
+    ].filter(Boolean);
+
+    if (sources.length === 0) {
+      sources.push({
+        url: imgOf(project, undefined, season),
+        description: "preview image",
+      });
+    }
+
+    return sources.map((image) => ({
+      src: optimize(image.url, 900),
+      description: image.description,
+    }));
+  }, [project.coverImage?.url, project.gallery, project.title, season]);
+
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
-}
+  const touchStart = useRef(null);
+  const imageCount = images.length;
+
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReducedMotion(preference.matches);
+    preference.addEventListener("change", updatePreference);
+    return () => preference.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [project._id]);
+
+  useEffect(() => {
+    if (imageCount < 2 || paused || reducedMotion) return undefined;
+    const intervalId = window.setInterval(() => {
+      setActiveIndex((index) => (index + 1) % imageCount);
+    }, 3600);
+    return () => window.clearInterval(intervalId);
+  }, [imageCount, paused, reducedMotion]);
+
+  const showImage = (index) => {
+    setActiveIndex((index + imageCount) % imageCount);
+  };
+
+  const onTouchStart = (event) => {
+    touchStart.current = event.touches[0]?.clientX ?? null;
+    setPaused(true);
+  };
+
+  const onTouchEnd = (event) => {
+    const start = touchStart.current;
+    const end = event.changedTouches[0]?.clientX;
+    touchStart.current = null;
+    setPaused(false);
+    if (start === null || end === undefined || imageCount < 2) return;
+    const distance = end - start;
+    if (Math.abs(distance) < 40) return;
+    showImage(activeIndex + (distance < 0 ? 1 : -1));
+  };
+
+  return (
+    <div
+      className={`project-showcase${imageCount > 1 ? " has-slideshow" : ""}`}
+      role="group"
+      aria-label={`${project.title} image showcase`}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false);
+      }}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
+      {images.map((image, index) => (
+        <img
+          key={`${image.src}-${index}`}
+          className={`project-showcase-image${index === activeIndex ? " is-active" : ""}`}
+          src={image.src}
+          alt={`${project.title || "Project"} ${image.description}`}
+          loading="lazy"
+          decoding="async"
+          aria-hidden={index !== activeIndex}
+        />
+      ))}
+      {imageCount > 1 && (
+        <>
+          <button
+            type="button"
+            className="project-showcase-arrow previous"
+            aria-label={`Show previous image for ${project.title}`}
+            onClick={() => showImage(activeIndex - 1)}
+          >
+            <ArrowLeft size={17} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="project-showcase-arrow next"
+            aria-label={`Show next image for ${project.title}`}
+            onClick={() => showImage(activeIndex + 1)}
+          >
+            <ArrowRight size={17} aria-hidden="true" />
+          </button>
+          <div
+            className="project-showcase-pagination"
+            role="group"
+            aria-label="Choose a project image"
+          >
+            {images.map((image, index) => (
+              <button
+                key={`${image.src}-indicator-${index}`}
+                type="button"
+                className={`project-showcase-indicator${index === activeIndex ? " is-active" : ""}`}
+                aria-label={`Show image ${index + 1} of ${imageCount}`}
+                aria-pressed={index === activeIndex}
+                onClick={() => showImage(index)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+});
 
 function ProjectSkeleton() {
   return (
@@ -51,34 +176,6 @@ export default function SelectedProjects({
   const featured = (Array.isArray(projects) ? projects : []).filter(
     (project) => project?.featured && project.status === "published",
   );
-  const [hover, setHover] = useState(null);
-  const preview = useRef(null);
-
-  const onMove = (event) => {
-    const card = event.target.closest(".index-row");
-    if (
-      card &&
-      matchMedia("(hover: hover) and (pointer: fine)").matches &&
-      !matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      const bounds = card.getBoundingClientRect();
-      const x = (event.clientX - bounds.left) / bounds.width - 0.5;
-      const y = (event.clientY - bounds.top) / bounds.height - 0.5;
-      card.style.setProperty("--tilt-x", `${(-y * 3).toFixed(2)}deg`);
-      card.style.setProperty("--tilt-y", `${(x * 4).toFixed(2)}deg`);
-    }
-    if (preview.current) {
-      preview.current.style.transform = `translate3d(${event.clientX + 24}px, ${event.clientY - 120}px, 0)`;
-    }
-  };
-
-  const onLeave = (event) => {
-    event.currentTarget.querySelectorAll(".index-row").forEach((card) => {
-      card.style.removeProperty("--tilt-x");
-      card.style.removeProperty("--tilt-y");
-    });
-    setHover(null);
-  };
 
   return (
     <section id="projects" className="section">
@@ -108,65 +205,49 @@ export default function SelectedProjects({
             </p>
           </div>
         ) : (
-          <ul className="index-list" onMouseMove={onMove} onMouseLeave={onLeave}>
+          <ul className="index-list">
             {featured.map((project, index) => {
               const title = project.title || "Untitled project";
               const description = project.summary || project.description;
               return (
                 <Reveal as="li" key={project._id} delay={(index % 3) * 60}>
-                  <article
-                    className="index-row"
-                    onMouseEnter={() => setHover(project)}
-                  >
-                    {project.slug ? (
-                      <Link
-                        to={`/projects/${project.slug}`}
-                        className="project-card-main"
-                        onFocus={() => setHover(project)}
-                        onBlur={() => setHover(null)}
-                      >
-                        <ProjectImage
-                          project={project}
-                          season={season}
-                          className="index-thumb"
-                        />
-                        <span className="project-card-heading">
-                          <span className="index-title">{title}</span>
-                          <ArrowUpRight className="index-arrow" size={22} />
-                        </span>
-                        {project.category?.name && (
-                          <span className="index-meta">
-                            {project.category.name}
-                          </span>
+                  <article className="index-row">
+                    <ProjectShowcase project={project} season={season} />
+                    <div className="project-card-main">
+                      <div className="project-card-heading">
+                        {project.slug ? (
+                          <Link
+                            to={`/projects/${project.slug}`}
+                            className="project-title-link"
+                          >
+                            <h3 className="index-title">{title}</h3>
+                          </Link>
+                        ) : (
+                          <h3 className="index-title">{title}</h3>
                         )}
-                        {description && (
-                          <span className="project-summary">
-                            {description}
-                          </span>
-                        )}
-                      </Link>
-                    ) : (
-                      <div className="project-card-main">
-                        <ProjectImage
-                          project={project}
-                          season={season}
-                          className="index-thumb"
-                        />
-                        <span className="project-card-heading">
-                          <span className="index-title">{title}</span>
-                        </span>
-                        {project.category?.name && (
-                          <span className="index-meta">
-                            {project.category.name}
-                          </span>
-                        )}
-                        {description && (
-                          <span className="project-summary">
-                            {description}
-                          </span>
+                        {project.slug && (
+                          <Link
+                            to={`/projects/${project.slug}`}
+                            className="project-title-arrow"
+                            aria-label={`View ${title}`}
+                          >
+                            <ArrowUpRight
+                              className="index-arrow"
+                              size={20}
+                              aria-hidden="true"
+                            />
+                          </Link>
                         )}
                       </div>
-                    )}
+                      {project.category?.name && (
+                        <span className="index-meta">
+                          {project.category.name}
+                        </span>
+                      )}
+                      {description && (
+                        <p className="project-summary">{description}</p>
+                      )}
+                    </div>
                     {Array.isArray(project.technologies) &&
                       project.technologies.length > 0 && (
                         <ul
@@ -180,32 +261,39 @@ export default function SelectedProjects({
                           ))}
                         </ul>
                       )}
-                    {(project.liveUrl || project.githubUrl) && (
-                      <div className="project-links">
-                        {project.liveUrl && (
-                          <a
-                            href={project.liveUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label={`Visit ${title} live site`}
-                          >
-                            <Globe size={16} />
-                            Live site
-                          </a>
-                        )}
-                        {project.githubUrl && (
-                          <a
-                            href={project.githubUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label={`View ${title} source code`}
-                          >
-                            <Github size={16} />
-                            Source
-                          </a>
-                        )}
-                      </div>
-                    )}
+                    <div className="project-links">
+                      {project.liveUrl && (
+                        <a
+                          href={project.liveUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Visit ${title} live demo`}
+                        >
+                          <Globe size={16} aria-hidden="true" />
+                          Live Demo
+                        </a>
+                      )}
+                      {project.githubUrl && (
+                        <a
+                          href={project.githubUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`View ${title} on GitHub`}
+                        >
+                          <Github size={16} aria-hidden="true" />
+                          GitHub
+                        </a>
+                      )}
+                      {project.slug && (
+                        <Link
+                          to={`/projects/${project.slug}`}
+                          className="project-view-link"
+                        >
+                          View Project
+                          <ArrowUpRight size={15} aria-hidden="true" />
+                        </Link>
+                      )}
+                    </div>
                     {!project.slug && (
                       <Link className="project-inquiry" to="/#contact">
                         Ask about this project <ArrowUpRight size={14} />
@@ -217,13 +305,6 @@ export default function SelectedProjects({
             })}
           </ul>
         )}
-      </div>
-      <div
-        ref={preview}
-        className={`index-preview ${hover ? "show" : ""}`}
-        aria-hidden="true"
-      >
-        {hover && <ProjectImage project={hover} season={season} width={700} />}
       </div>
     </section>
   );

@@ -23,10 +23,12 @@ export const listPublished = asyncHandler(async (req, res) => {
 });
 
 export const getPublished = asyncHandler(async (req, res) => {
-  const project = await Project.findOne({ slug: req.params.slug, status: 'published' }).populate(populate);
+  const project = await Project.findOne({ slug: req.params.slug, status: 'published' })
+    .populate(populate)
+    .select('-gallery.publicId -coverImage.publicId');
   if (!project) throw new AppError('Project not found', 404);
   const related = await Project.find({ status: 'published', category: project.category._id, _id: { $ne: project._id } })
-    .limit(3).populate(populate).select('title slug summary coverImage category technologies');
+    .limit(3).populate(populate).select('title slug summary coverImage.url category technologies');
   res.json({ project, related });
 });
 

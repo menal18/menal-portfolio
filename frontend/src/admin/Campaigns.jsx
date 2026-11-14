@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Eye, EyeOff, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowUpRight, Eye, EyeOff, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import api, { errMsg } from '../services/api.js';
-import { Empty, Field, ImagePicker, PageHeader, Spinner, useToast } from './ui.jsx';
+import { Empty, Field, ImagePicker, PageHeader, Spinner, useConfirm, useToast, fmtDate } from './ui.jsx';
 import { placeholder } from '../services/images.js';
 
 export function CampaignList() {
   const toast = useToast();
+  const confirm = useConfirm();
   const [list, setList] = useState(null);
   const load = useCallback(() => api.get('/admin/campaigns').then((r) => setList(r.data)).catch((e) => toast(errMsg(e), 'error')), [toast]);
   useEffect(() => { load(); }, [load]);
@@ -14,8 +15,11 @@ export function CampaignList() {
   const toggle = async (c) => {
     try { await api.patch(`/admin/campaigns/${c._id}/status`, { status: c.status === 'published' ? 'draft' : 'published' }); toast(c.status === 'published' ? 'Unpublished' : 'Published'); load(); } catch (e) { toast(errMsg(e), 'error'); }
   };
+  const toggleFeatured = async (c) => {
+    try { await api.patch(`/admin/campaigns/${c._id}/status`, { featured: !c.featured }); toast(c.featured ? 'Campaign unfeatured' : 'Campaign featured'); load(); } catch (e) { toast(errMsg(e), 'error'); }
+  };
   const del = async (c) => {
-    if (!window.confirm(`Delete "${c.title}" and its creatives?`)) return;
+    if (!await confirm({ title: `Delete "${c.title}"?`, message: 'This will permanently remove the campaign and its uploaded creative images.', confirmLabel: 'Delete campaign' })) return;
     try { await api.delete(`/admin/campaigns/${c._id}`); toast('Campaign deleted'); load(); } catch (e) { toast(errMsg(e), 'error'); }
   };
 
@@ -23,16 +27,34 @@ export function CampaignList() {
     <>
       <PageHeader title="Marketing" sub="Campaigns, creatives, SEO and social work shown in the marketing showcase."><Link className="a-btn primary" to="/admin/marketing/new"><Plus size={16} /> New campaign</Link></PageHeader>
       {!list ? <Spinner /> : list.length === 0 ? <Empty>No campaigns yet.</Empty> : (
-        <ul className="a-rows">
+        <ul className="a-entity-grid">
           {list.map((c) => (
-            <li key={c._id}>
-              <img src={c.coverImage?.url || c.creatives?.[0]?.url || placeholder(c.title, c.title, 160, 100)} alt="" />
-              <div className="a-row-main"><strong>{c.title}</strong><span className="muted">{c.type}{c.client ? `, ${c.client}` : ''}</span></div>
-              <span className={`pill ${c.status}`}>{c.status}</span>
-              <div className="a-row-actions">
-                <button type="button" className="icon-btn" aria-label="Toggle published" onClick={() => toggle(c)}>{c.status === 'published' ? <EyeOff size={16} /> : <Eye size={16} />}</button>
-                <Link className="icon-btn" to={`/admin/marketing/${c._id}`} aria-label="Edit"><Pencil size={16} /></Link>
-                <button type="button" className="icon-btn danger" aria-label="Delete" onClick={() => del(c)}><Trash2 size={16} /></button>
+            <li className="a-entity-card" key={c._id}>
+              <Link className="a-entity-image" to={`/admin/marketing/${c._id}`} aria-label={`Edit ${c.title}`}>
+                <img src={c.coverImage?.url || c.creatives?.[0]?.url || placeholder(c.title, c.title, 480, 300)} alt="" />
+                <span>View campaign <ArrowUpRight size={15} /></span>
+              </Link>
+              <div className="a-entity-content">
+                <div className="a-entity-title-row">
+                  <div className="a-entity-title">
+                    <h2><Link to={`/admin/marketing/${c._id}`}>{c.title}</Link></h2>
+                    <p>{[c.type, c.client, c.platform].filter(Boolean).join(' · ')}</p>
+                  </div>
+                  <div className="a-badges">
+                    <span className={`a-status ${c.status}`}>{c.status}</span>
+                    {c.featured && <span className="a-badge-featured"><Star size={12} fill="currentColor" /> Featured</span>}
+                  </div>
+                </div>
+                {c.summary && <p className="a-entity-summary">{c.summary}</p>}
+                <div className="a-entity-footer">
+                  <span className="a-entity-date">Updated {fmtDate(c.updatedAt || c.createdAt)}</span>
+                  <div className="a-row-actions">
+                    <button type="button" className={`icon-btn ${c.featured ? 'on' : ''}`} title={c.featured ? 'Remove from featured' : 'Feature'} aria-label={c.featured ? 'Remove from featured' : 'Feature campaign'} onClick={() => toggleFeatured(c)}><Star size={16} /></button>
+                    <button type="button" className="icon-btn" title={c.status === 'published' ? 'Unpublish' : 'Publish'} aria-label={c.status === 'published' ? 'Unpublish campaign' : 'Publish campaign'} onClick={() => toggle(c)}>{c.status === 'published' ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+                    <Link className="icon-btn" to={`/admin/marketing/${c._id}`} aria-label={`Edit ${c.title}`}><Pencil size={16} /></Link>
+                    <button type="button" className="icon-btn danger" aria-label={`Delete ${c.title}`} onClick={() => del(c)}><Trash2 size={16} /></button>
+                  </div>
+                </div>
               </div>
             </li>
           ))}
@@ -93,7 +115,7 @@ export function CampaignForm() {
   return (
     <>
       <PageHeader title={id ? 'Edit campaign' : 'New campaign'} />
-      <form className="a-form" onSubmit={submit}>
+      <form className="a-form a-editor-form" onSubmit={submit}>
         <Field label="Title" htmlFor="t"><input id="t" value={f.title} onChange={set('title')} required maxLength={140} /></Field>
         <div className="a-cols">
           <Field label="Type" htmlFor="ty"><select id="ty" value={f.type} onChange={set('type')}>{['Campaign', 'Creative', 'SEO', 'Social Media', 'Content'].map((t) => <option key={t}>{t}</option>)}</select></Field>

@@ -1,24 +1,69 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ImagePlus, Trash2, Undo2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { AlertTriangle, ImagePlus, Inbox, Trash2, Undo2 } from 'lucide-react';
 
 /* ---------- toasts ---------- */
 const ToastCtx = createContext(() => {});
 export const useToast = () => useContext(ToastCtx);
+const ConfirmCtx = createContext(async () => false);
+export const useConfirm = () => useContext(ConfirmCtx);
 
 export function ToastProvider({ children }) {
   const [items, setItems] = useState([]);
+  const [confirmation, setConfirmation] = useState(null);
   const push = useCallback((message, type = 'ok') => {
     const id = Math.random().toString(36).slice(2);
     setItems((l) => [...l, { id, message, type }]);
     setTimeout(() => setItems((l) => l.filter((t) => t.id !== id)), type === 'error' ? 6500 : 3200);
   }, []);
-  const value = useMemo(() => push, [push]);
+  const confirm = useCallback((options) => new Promise((resolve) => {
+    setConfirmation({
+      title: options.title || 'Are you sure?',
+      message: options.message || 'This action cannot be undone.',
+      confirmLabel: options.confirmLabel || 'Continue',
+      resolve,
+    });
+  }), []);
+  const finishConfirmation = useCallback((confirmed) => {
+    confirmation?.resolve(confirmed);
+    setConfirmation(null);
+  }, [confirmation]);
+
+  useEffect(() => {
+    if (!confirmation) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') finishConfirmation(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [confirmation, finishConfirmation]);
+
+  const toastValue = useMemo(() => push, [push]);
+  const confirmValue = useMemo(() => confirm, [confirm]);
   return (
-    <ToastCtx.Provider value={value}>
-      {children}
-      <div className="toasts" aria-live="polite">
-        {items.map((t) => <div key={t.id} className={`toast ${t.type}`}>{t.message}</div>)}
-      </div>
+    <ToastCtx.Provider value={toastValue}>
+      <ConfirmCtx.Provider value={confirmValue}>
+        {children}
+        <div className="toasts" aria-live="polite">
+          {items.map((t) => <div key={t.id} className={`toast ${t.type}`} role={t.type === 'error' ? 'alert' : 'status'}>{t.message}</div>)}
+        </div>
+        {confirmation && createPortal(
+          <div className="a-confirm-backdrop" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) finishConfirmation(false);
+          }}>
+            <section className="a-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="a-confirm-title" aria-describedby="a-confirm-message">
+              <span className="a-confirm-icon"><AlertTriangle size={21} aria-hidden="true" /></span>
+              <h2 id="a-confirm-title">{confirmation.title}</h2>
+              <p id="a-confirm-message">{confirmation.message}</p>
+              <div className="a-actions">
+                <button type="button" className="a-btn" autoFocus onClick={() => finishConfirmation(false)}>Cancel</button>
+                <button type="button" className="a-btn danger" onClick={() => finishConfirmation(true)}>{confirmation.confirmLabel}</button>
+              </div>
+            </section>
+          </div>,
+          document.body
+        )}
+      </ConfirmCtx.Provider>
     </ToastCtx.Provider>
   );
 }
@@ -31,7 +76,12 @@ export const PageHeader = ({ title, children, sub }) => (
   </div>
 );
 
-export const Empty = ({ children }) => <p className="a-empty">{children}</p>;
+export const Empty = ({ children }) => (
+  <div className="a-empty">
+    <span><Inbox size={20} aria-hidden="true" /></span>
+    <p>{children}</p>
+  </div>
+);
 
 export function Field({ label, hint, children, htmlFor }) {
   return (
